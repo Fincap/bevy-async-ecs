@@ -24,7 +24,8 @@ pub struct AsyncSystem {
 }
 
 impl AsyncSystem {
-	pub(crate) async fn new(system: BoxedSystem, world: AsyncWorld) -> Self {
+	/// Registers a `System` and returns an `AsyncSystem` that can be used to run the system on demand.
+	pub async fn new(system: BoxedSystem, world: AsyncWorld) -> Self {
 		let (id_tx, id_rx) = async_channel::bounded(1);
 		world
 			.apply(move |world: &mut World| {
