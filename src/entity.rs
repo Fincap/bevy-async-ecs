@@ -2,7 +2,7 @@ use crate::command::CommandQueueSender;
 use crate::util::{insert, remove};
 use crate::wait_for::StartWaitingFor;
 use crate::world::AsyncWorld;
-use crate::{die, recv_and_yield};
+use crate::{die, recv};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::Command;
@@ -38,7 +38,12 @@ impl AsyncEntity {
 
 	/// Recursively despawns the represented entity.
 	pub async fn despawn(self) {
-		self.world.apply(DespawnRecursive { entity: self.id }).await;
+		self.world
+			.apply(DespawnRecursive {
+				entity: self.id,
+				warn: false,
+			})
+			.await;
 	}
 
 	/// Adds a `Bundle` of components to the entity. This will overwrite any previous value(s) of
@@ -100,7 +105,7 @@ impl<C: Component> fmt::Debug for AsyncComponent<C> {
 impl<C: Component> AsyncComponent<C> {
 	/// Wait for the `Component` to exist, and retrieve its value.
 	pub async fn wait(self) -> C {
-		recv_and_yield(self.0).await
+		recv(self.0).await
 	}
 }
 
@@ -170,7 +175,7 @@ mod tests {
 			}
 		};
 
-		assert!(app.world().get_entity(id).is_some());
+		assert!(app.world().get_entity(id).is_ok());
 	}
 
 	#[test]
@@ -223,7 +228,7 @@ mod tests {
 			}
 		}
 
-		assert!(app.world().get_entity(id).is_none());
+		assert!(app.world().get_entity(id).is_err());
 	}
 
 	#[test]

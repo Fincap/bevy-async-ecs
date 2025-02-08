@@ -1,3 +1,11 @@
+# 0.7.0
+
+- Updated for bevy 0.15
+
+# 0.6.1
+
+- Wasm support
+
 # 0.6.0
 
 - Updated for bevy 0.14

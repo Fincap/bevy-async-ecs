@@ -1,6 +1,6 @@
 use crate::util::remove_system;
 use crate::world::AsyncWorld;
-use crate::{die, recv_and_yield};
+use crate::{die, recv};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{BoxedSystem, SystemId};
 use std::any::Any;
@@ -8,8 +8,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 type BoxedAnySend = Box<dyn Any + Send>;
-type SystemIdWithIO = SystemId<BoxedAnySend, BoxedAnySend>;
-type BoxedSystemWithIO = BoxedSystem<BoxedAnySend, BoxedAnySend>;
+type SystemIdWithIO = SystemId<In<BoxedAnySend>, BoxedAnySend>;
+type BoxedSystemWithIO = BoxedSystem<In<BoxedAnySend>, BoxedAnySend>;
 
 /// Represents a registered `System` that can be run asynchronously.
 ///
@@ -33,7 +33,7 @@ impl AsyncSystem {
 				id_tx.try_send(id).unwrap_or_else(die);
 			})
 			.await;
-		let id = recv_and_yield(id_rx).await;
+		let id = recv(id_rx).await;
 		let id = Arc::new(id);
 		Self { id, world }
 	}
@@ -86,7 +86,10 @@ impl<I: Send, O: Send> Clone for AsyncIOSystem<I, O> {
 }
 
 impl<I: Send + 'static, O: Send + 'static> AsyncIOSystem<I, O> {
-	pub(crate) async fn new<M>(system: impl IntoSystem<I, O, M> + Send, world: AsyncWorld) -> Self {
+	pub(crate) async fn new<M>(
+		system: impl IntoSystem<In<I>, O, M> + Send,
+		world: AsyncWorld,
+	) -> Self {
 		fn unbox_input<I: Send + 'static>(In(boxed): In<BoxedAnySend>) -> I {
 			let concrete = boxed.downcast().unwrap_or_else(die);
 			*concrete
@@ -96,7 +99,8 @@ impl<I: Send + 'static, O: Send + 'static> AsyncIOSystem<I, O> {
 			Box::new(output)
 		}
 
-		let system: BoxedSystemWithIO = Box::new(unbox_input.pipe(system).pipe(box_output));
+		let system = unbox_input.pipe(system).pipe(box_output);
+		let system: BoxedSystemWithIO = Box::new(IntoSystem::into_system(system));
 
 		let (id_tx, id_rx) = async_channel::bounded(1);
 		world
@@ -106,7 +110,7 @@ impl<I: Send + 'static, O: Send + 'static> AsyncIOSystem<I, O> {
 			})
 			.await;
 
-		let id = recv_and_yield(id_rx).await;
+		let id = recv(id_rx).await;
 		let id = Arc::new(id);
 
 		Self {
@@ -133,7 +137,7 @@ impl<I: Send + 'static, O: Send + 'static> AsyncIOSystem<I, O> {
 			})
 			.await;
 
-		let boxed: BoxedAnySend = recv_and_yield(output_rx).await;
+		let boxed: BoxedAnySend = recv(output_rx).await;
 		let concrete = boxed.downcast().unwrap_or_else(die);
 		*concrete
 	}
@@ -250,7 +254,7 @@ mod tests {
 		};
 		app.update();
 
-		let err = app.world_mut().remove_system(system_id);
+		let err = app.world_mut().unregister_system(system_id);
 		assert_counter!(id, 1, app.world_mut());
 		assert!(matches!(
 			err,
@@ -270,12 +274,8 @@ mod tests {
 
 		AsyncComputeTaskPool::get()
 			.spawn(async move {
-				let increase_counter = async_world
-					.register_io_system::<Entity, (), _>(increase_counter)
-					.await;
-				let get_counter_value = async_world
-					.register_io_system::<Entity, u8, _>(get_counter_value)
-					.await;
+				let increase_counter = async_world.register_io_system(increase_counter).await;
+				let get_counter_value = async_world.register_io_system(get_counter_value).await;
 
 				increase_counter.run(id).await;
 				let value = get_counter_value.run(id).await;
@@ -307,12 +307,8 @@ mod tests {
 
 		AsyncComputeTaskPool::get()
 			.spawn(async move {
-				let increase_counter = async_world
-					.register_io_system::<Entity, (), _>(increase_counter)
-					.await;
-				let get_counter_value = async_world
-					.register_io_system::<Entity, u8, _>(get_counter_value)
-					.await;
+				let increase_counter = async_world.register_io_system(increase_counter).await;
+				let get_counter_value = async_world.register_io_system(get_counter_value).await;
 
 				let gcv2 = get_counter_value.clone();
 				get_counter_value.unregister().await;
@@ -332,7 +328,7 @@ mod tests {
 		};
 		app.update();
 
-		let err = app.world_mut().remove_system(system_id);
+		let err = app.world_mut().unregister_system(system_id);
 		assert_eq!(5, value);
 		assert_counter!(id, 5, app.world_mut());
 		assert!(matches!(
