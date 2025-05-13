@@ -1,10 +1,10 @@
+use bevy::platform::sync::OnceLock;
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
 use bevy_async_ecs::*;
 use rand::distributions::{Alphanumeric, Distribution};
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
-use std::sync::OnceLock;
 
 // Setting up the global AsyncWorld
 
